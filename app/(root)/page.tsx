@@ -3,7 +3,11 @@ import Image from "next/image";
 import BookList from "@/components/BookList";
 import BookOverview from "@/components/BookOverview";
 import { sampleBooks } from "@/constants";
-export default function Home() {
+import { db } from "@/database/drizzle";
+import { usersTable } from "@/database/schema";
+export default async function Home() {
+  // const result = await db.select().from(usersTable);
+  // console.log(JSON.stringify(result,null,2))
   return (
     <>
       <BookOverview {...sampleBooks[0]} />

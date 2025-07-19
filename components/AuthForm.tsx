@@ -22,9 +22,12 @@ import { z, ZodType } from "zod";
 import Link from "next/link";
 import { FIELD_NAMES } from "@/constants";
 import ImageUpload from "./ImageUpload";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useState } from "react";
 
 interface Props<T extends FieldValues> {
-  schema: ZodType<T, any, any>; // More permissive schema type
+  schema: ZodType<T, any, any>;
   defaultValues: T;
   onSubmit: (data: T) => Promise<{ success: boolean; error?: string }>;
   type: "SIGN_IN" | "SIGN_UP";
@@ -36,26 +39,57 @@ const AuthForm = <T extends FieldValues>({
   defaultValues,
   onSubmit,
 }: Props<T>) => {
+  const router = useRouter();
   const isSignIn = type === "SIGN_IN";
-  
-  // Remove the explicit type annotation to let TypeScript infer it
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const form = useForm<T>({
     resolver: zodResolver(schema),
     defaultValues: defaultValues as DefaultValues<T>,
+    mode: "onChange", // This will show validation errors as user types
   });
 
   const handleSubmit: SubmitHandler<T> = async (data) => {
+    console.log("Form submitted with data:", data); // Debug log
+    
+    setIsSubmitting(true);
+    
     try {
-      const result = await onSubmit(data);
-      if (result.success) {
-        // Handle success
-        console.log("Form submitted successfully");
+      // Validate the data against schema before submitting
+      const validatedData = schema.parse(data);
+      console.log("Validated data:", validatedData); // Debug log
+      
+      const res = await onSubmit(validatedData);
+      console.log("Submit response:", res); // Debug log
+
+      if (res.success) {
+        toast.success(
+          isSignIn
+            ? "You have successfully signed in!"
+            : "You have successfully signed up!"
+        );
+        
+        // Small delay to show the toast before redirecting
+        setTimeout(() => {
+          router.push("/");
+        }, 1000);
       } else {
-        // Handle error
-        console.error("Form submission failed:", result.error);
+        const errorMessage = res.error || (isSignIn ? "Error signing in" : "Error signing up");
+        toast.error(errorMessage);
+        console.error("Submit error:", res.error);
       }
     } catch (error) {
       console.error("Form submission error:", error);
+      
+      if (error instanceof z.ZodError) {
+        // Handle validation errors
+        toast.error("Please check your form for errors");
+        console.error("Validation errors:", error.message);
+      } else {
+        toast.error("An unexpected error occurred. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -69,6 +103,7 @@ const AuthForm = <T extends FieldValues>({
           ? "Access the vast collection of resources and stay updated"
           : "Please complete all fields and upload a valid university ID to gain access to the library"}
       </p>
+      
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(handleSubmit)}
@@ -81,10 +116,17 @@ const AuthForm = <T extends FieldValues>({
               name={field as Path<T>}
               render={({ field: formField }) => (
                 <FormItem>
-                  <FormLabel>{FIELD_NAMES[field] || field}</FormLabel>
+                  <FormLabel className="text-white">
+                    {FIELD_NAMES[field] || field}
+                  </FormLabel>
                   <FormControl>
                     {field === "universityCard" ? (
-                      <ImageUpload />
+                      <ImageUpload
+                        value={formField.value}
+                        onChange={formField.onChange}
+                        onBlur={formField.onBlur}
+                        disabled={isSubmitting}
+                      />
                     ) : (
                       <Input
                         className="form-input"
@@ -94,24 +136,48 @@ const AuthForm = <T extends FieldValues>({
                             ? "password"
                             : field === "email"
                             ? "email"
+                            : field === "universityId"
+                            ? "number"
                             : "text"
                         }
+                        disabled={isSubmitting}
                         {...formField}
+                        // Convert number fields properly
+                        onChange={(e) => {
+                          const value = field === "universityId" 
+                            ? e.target.value === "" ? 0 : parseInt(e.target.value) || 0
+                            : e.target.value;
+                          formField.onChange(value);
+                        }}
+                        value={field === "universityId" ? (formField.value || "") : formField.value}
                       />
                     )}
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-red-400" />
                 </FormItem>
               )}
             />
           ))}
 
-          <Button className="form-btn" type="submit">
-            {isSignIn ? "Sign In" : "Sign Up"}
+          <Button 
+            className="form-btn w-full" 
+            type="submit"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                {isSignIn ? "Signing In..." : "Creating Account..."}
+              </>
+            ) : (
+              isSignIn ? "Sign In" : "Sign Up"
+            )}
           </Button>
+          
         </form>
       </Form>
-      <p className="text-center text-base font-medium">
+      
+      <p className="text-center text-base font-medium text-white">
         {isSignIn ? "New to BookWise? " : "Already have an account? "}
         <Link
           className="font-bold text-primary underline"

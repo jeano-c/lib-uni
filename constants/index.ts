@@ -41,12 +41,13 @@ export const adminSideBarLinks = [
 ];
 
 // In your constants file
-export const FIELD_NAMES: { [key: string]: string } = {
-  fullName: "Full name",  // Make sure this matches your form field name
+export const FIELD_NAMES: Record<string, string> = {
   email: "Email",
-  universityId: "University ID Number",
   password: "Password",
-  universityCard: "Upload University ID Card",
+  fullName: "Full Name",
+  universityId: "University ID",
+  universityCard: "University Card",
+  birthDate: "Date of Birth",
 };
 
 export const FIELD_TYPES = {
