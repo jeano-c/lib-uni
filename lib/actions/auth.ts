@@ -11,7 +11,6 @@ import ratelimit from "../ratelimit";
 import { workflowClient } from "../workflow";
 import config from "../config";
 
-// Add this type if it doesn't exist
 type AuthCredentials = {
     fullName: string;
     email: string;
@@ -62,7 +61,7 @@ export const signUp = async (params: AuthCredentials) => {
         redirect("/too-fast");
     }
 
-    // Check if user already exists
+
     const existingUser = await db
         .select()
         .from(usersTable)
@@ -79,7 +78,7 @@ export const signUp = async (params: AuthCredentials) => {
     const hashedPassword = await hash(password, 10);
     
     try {
-        // Insert new user
+
         await db.insert(usersTable).values({
             fullName,
             email,
@@ -88,17 +87,15 @@ export const signUp = async (params: AuthCredentials) => {
             universityCard
         });
 
-        // Trigger onboarding workflow (non-blocking)
         try {
             await workflowClient.trigger({
                 url: `${config.env.prodApiEndpoint}/api/workflows/onboarding`
             });
         } catch (workflowError) {
             console.log("Workflow trigger failed:", workflowError);
-            // Don't fail registration if workflow fails
+      
         }
-        
-        // Sign in the user
+
         const signInResult = await signInWithCredentials({ email, password });
         
         if (!signInResult.success) {
