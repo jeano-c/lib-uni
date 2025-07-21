@@ -4,65 +4,118 @@ import { signIn } from "@/auth";
 import { db } from "@/database/drizzle";
 import { usersTable } from "@/database/schema";
 import { hash } from "bcryptjs";
-
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
-import ratelimit from "../ratelimit";
-import { Redirect } from "next";
 import { redirect } from "next/navigation";
+import ratelimit from "../ratelimit";
 import { workflowClient } from "../workflow";
 import config from "../config";
 
+// Add this type if it doesn't exist
+type AuthCredentials = {
+    fullName: string;
+    email: string;
+    universityId: number;
+    password: string;
+    universityCard: string;
+};
 
 export const signInWithCredentials = async (params: Pick<AuthCredentials, "email" | "password">) => {
     const { email, password } = params;
     const ip = (await headers()).get('x-forwarded-for') || '127.0.0.1';
-    const { success } = await ratelimit.limit(ip)
-    if (!success) return redirect("/too-fast")
+    const { success } = await ratelimit.limit(ip);
+    
+    if (!success) {
+        redirect("/too-fast");
+    }
+    
     try {
         const result = await signIn('credentials', {
-            email, password, redirect: false
-        })
-
+            email, 
+            password, 
+            redirect: false
+        });
+        
         if (result?.error) {
             return {
-                success: false, error: result.error
-            }
+                success: false, 
+                error: result.error
+            };
         }
-        return { success: true }
+        
+        return { success: true };
     } catch (error) {
-        console.log(error, "Sign in error")
-        return { success: false, error: "Sign in Error" }
+        console.log(error, "Sign in error");
+        return { 
+            success: false, 
+            error: "Sign in Error" 
+        };
     }
-}
+};
 
 export const signUp = async (params: AuthCredentials) => {
     const { fullName, email, universityId, password, universityCard } = params;
     const ip = (await headers()).get('x-forwarded-for') || '127.0.0.1';
-    const { success } = await ratelimit.limit(ip)
-    if (!success) return redirect("/too-fast")
-    const existingUser = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1)
+    const { success } = await ratelimit.limit(ip);
+    
+    if (!success) {
+        redirect("/too-fast");
+    }
+
+    // Check if user already exists
+    const existingUser = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, email))
+        .limit(1);
 
     if (existingUser.length > 0) {
-        return { success: false, error: "User Already exists" }
+        return { 
+            success: false, 
+            error: "User already exists" 
+        };
     }
 
     const hashedPassword = await hash(password, 10);
+    
     try {
+        // Insert new user
         await db.insert(usersTable).values({
             fullName,
             email,
             universityId,
             password: hashedPassword,
             universityCard
-        })
-        await workflowClient.trigger({
-            url: `${config.env.prodApiEndpoint}/api/workflows/onboarding`
-        })
-        await signInWithCredentials({ email, password })
-        return { success: true }
+        });
+
+        // Trigger onboarding workflow (non-blocking)
+        try {
+            await workflowClient.trigger({
+                url: `${config.env.prodApiEndpoint}/api/workflows/onboarding`
+            });
+        } catch (workflowError) {
+            console.log("Workflow trigger failed:", workflowError);
+            // Don't fail registration if workflow fails
+        }
+        
+        // Sign in the user
+        const signInResult = await signInWithCredentials({ email, password });
+        
+        if (!signInResult.success) {
+            return { 
+                success: false, 
+                error: "Registration successful but auto-login failed. Please sign in manually." 
+            };
+        }
+
+        // Redirect to home page after successful registration and login
+        redirect("/");
+        
     } catch (error) {
-        console.log(error, "sign up error")
-        return { success: false, error: "Signup Error" }
+        console.log(error, "Sign up error");
+        return { 
+            success: false, 
+            error: "Registration failed. Please try again." 
+        };
     }
-}
+};
